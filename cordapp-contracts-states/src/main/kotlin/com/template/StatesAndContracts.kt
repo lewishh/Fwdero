@@ -4,7 +4,10 @@ import net.corda.core.contracts.CommandData
 import net.corda.core.contracts.Contract
 import net.corda.core.contracts.ContractState
 import net.corda.core.identity.AbstractParty
+import net.corda.core.identity.Party
 import net.corda.core.transactions.LedgerTransaction
+import java.math.BigDecimal
+import java.util.*
 
 // *****************
 // * Contract Code *
@@ -29,6 +32,7 @@ class TemplateContract : Contract {
 // *********
 // * State *
 // *********
-data class TemplateState(val data: String) : ContractState {
-    override val participants: List<AbstractParty> = listOf()
+data class ForwardState(val initiator: Party, val acceptor: Party, val asset: String, val deliveryPrice: BigDecimal,
+                        val agreementDate: Date, val settlementDate: Date, val buySell: String) : ContractState {
+    override val participants: List<AbstractParty> = listOf() // Entities which state is relevant
 }
