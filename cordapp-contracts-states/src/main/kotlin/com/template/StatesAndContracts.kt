@@ -32,7 +32,6 @@ class TemplateContract : Contract {
 // *********
 // * State *
 // *********
-data class ForwardState(val initiator: Party, val acceptor: Party, val asset: String, val deliveryPrice: BigDecimal,
-                        val agreementDate: Date, val settlementDate: Date, val buySell: String) : ContractState {
+data class ForwardState(val initiator: Party, val acceptor: Party, val asset: String, val deliveryPrice: BigDecimal) : ContractState {
     override val participants: List<AbstractParty> = listOf() // Entities which state is relevant
 }

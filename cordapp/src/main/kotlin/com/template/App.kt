@@ -2,15 +2,21 @@ package com.template
 
 import co.paralleluniverse.fibers.Suspendable
 import net.corda.core.flows.*
+import net.corda.core.identity.Party
 import net.corda.core.messaging.CordaRPCOps
 import net.corda.core.serialization.SerializationWhitelist
+import net.corda.core.transactions.TransactionBuilder
+import net.corda.core.utilities.ProgressTracker
 import net.corda.webserver.services.WebServerPluginRegistry
+import java.util.*
 import java.util.function.Function
 import javax.ws.rs.GET
 import javax.ws.rs.Path
 import javax.ws.rs.Produces
 import javax.ws.rs.core.MediaType
 import javax.ws.rs.core.Response
+import net.corda.core.contracts.Command
+import java.math.BigDecimal
 
 // *****************
 // * API Endpoints *
@@ -29,22 +35,41 @@ class TemplateApi(val rpcOps: CordaRPCOps) {
 // *********
 // * Flows *
 // *********
+// Replace Initiator's definition with:
 @InitiatingFlow
 @StartableByRPC
-class Initiator : FlowLogic<Unit>() {
+class ForwardFlow(val borrower: Party, val asset: String, val deliveryPrice: BigDecimal) : FlowLogic<Unit>() {
+
+    /** The progress tracker provides checkpoints indicating the progress of the flow to observers. */
+    override val progressTracker = ProgressTracker()
+
+    /** The flow logic is encapsulated within the call() method. */
     @Suspendable
     override fun call() {
-        // Flow implementation goes here
+        // We retrieve the notary identity from the network map.
+        val notary = serviceHub.networkMapCache.notaryIdentities[0]
+
+        // We create the transaction components.
+        //val outputState = ForwardState(initiator, acceptor, asset, deliveryPrice, agreementDate, settlementDate,
+        //                buySell)
+
+        val outputState = ForwardState(ourIdentity, borrower, asset, deliveryPrice)
+        val cmd = Command(TemplateContract.Commands.Action(), ourIdentity.owningKey)
+
+        // We create a transaction builder and add the components.
+        val txBuilder = TransactionBuilder(notary = notary)
+                .addOutputState(outputState, TemplateContract.ID)
+                .addCommand(cmd)
+
+        // We sign the transaction.
+        val signedTx = serviceHub.signInitialTransaction(txBuilder)
+
+        // We finalise the transaction.
+        subFlow(FinalityFlow(signedTx))
     }
 }
 
-@InitiatedBy(Initiator::class)
-class Responder(val counterpartySession: FlowSession) : FlowLogic<Unit>() {
-    @Suspendable
-    override fun call() {
-        // Flow implementation goes here
-    }
-}
+
 
 // ***********
 // * Plugins *
