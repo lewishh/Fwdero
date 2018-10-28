@@ -8,7 +8,6 @@ import net.corda.core.serialization.SerializationWhitelist
 import net.corda.core.transactions.TransactionBuilder
 import net.corda.core.utilities.ProgressTracker
 import net.corda.webserver.services.WebServerPluginRegistry
-import java.util.*
 import java.util.function.Function
 import javax.ws.rs.GET
 import javax.ws.rs.Path
@@ -16,7 +15,9 @@ import javax.ws.rs.Produces
 import javax.ws.rs.core.MediaType
 import javax.ws.rs.core.Response
 import net.corda.core.contracts.Command
-import java.math.BigDecimal
+import net.corda.core.contracts.StateAndContract
+import net.corda.core.contracts.requireThat
+import net.corda.core.transactions.SignedTransaction
 
 // *****************
 // * API Endpoints *
@@ -38,7 +39,7 @@ class TemplateApi(val rpcOps: CordaRPCOps) {
 // Replace Initiator's definition with:
 @InitiatingFlow
 @StartableByRPC
-class ForwardFlow(val borrower: Party, val asset: String, val deliveryPrice: BigDecimal) : FlowLogic<Unit>() {
+class IOUFlow(val iouValue: Int, val otherParty: Party) : FlowLogic<Unit>() {
 
     /** The progress tracker provides checkpoints indicating the progress of the flow to observers. */
     override val progressTracker = ProgressTracker()
@@ -49,23 +50,47 @@ class ForwardFlow(val borrower: Party, val asset: String, val deliveryPrice: Big
         // We retrieve the notary identity from the network map.
         val notary = serviceHub.networkMapCache.notaryIdentities[0]
 
-        // We create the transaction components.
-        //val outputState = ForwardState(initiator, acceptor, asset, deliveryPrice, agreementDate, settlementDate,
-        //                buySell)
-
-        val outputState = ForwardState(ourIdentity, borrower, asset, deliveryPrice)
-        val cmd = Command(TemplateContract.Commands.Action(), ourIdentity.owningKey)
-
-        // We create a transaction builder and add the components.
+        // We create a transaction builder.
         val txBuilder = TransactionBuilder(notary = notary)
-                .addOutputState(outputState, TemplateContract.ID)
-                .addCommand(cmd)
 
-        // We sign the transaction.
+// We create the transaction components.
+        val outputState = IOUState(iouValue, ourIdentity, otherParty)
+        val outputContractAndState = StateAndContract(outputState, IOU_CONTRACT_ID)
+        val cmd = Command(IOUContract.Create(), listOf(ourIdentity.owningKey, otherParty.owningKey))
+
+// We add the items to the builder.
+        txBuilder.withItems(outputContractAndState, cmd)
+
+// Verifying the transaction.
+        txBuilder.verify(serviceHub)
+
+// Signing the transaction.
         val signedTx = serviceHub.signInitialTransaction(txBuilder)
 
-        // We finalise the transaction.
-        subFlow(FinalityFlow(signedTx))
+// Creating a session with the other party.
+        val otherPartySession = initiateFlow(otherParty)
+
+// Obtaining the counterparty's signature.
+        val fullySignedTx = subFlow(CollectSignaturesFlow(signedTx, listOf(otherPartySession), CollectSignaturesFlow.tracker()))
+
+// Finalising the transaction.
+        subFlow(FinalityFlow(fullySignedTx))
+    }
+}
+
+// Define IOUFlowResponder:
+@InitiatedBy(IOUFlow::class)
+class IOUFlowResponder(val otherPartySession: FlowSession) : FlowLogic<Unit>() {
+    @Suspendable
+    override fun call() {
+        val signTransactionFlow = object : SignTransactionFlow(otherPartySession, SignTransactionFlow.tracker()) {
+            override fun checkTransaction(stx: SignedTransaction) = requireThat {
+                val output = stx.tx.outputs.single().data
+                "This must be an IOU transaction." using (output is IOUState)
+            }
+        }
+
+        subFlow(signTransactionFlow)
     }
 }
 
