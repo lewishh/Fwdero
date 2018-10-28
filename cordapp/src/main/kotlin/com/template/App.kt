@@ -1,6 +1,8 @@
 package com.template
 
 import co.paralleluniverse.fibers.Suspendable
+import net.corda.core.contracts.Command
+import net.corda.core.contracts.StateAndContract
 import net.corda.core.flows.*
 import net.corda.core.identity.Party
 import net.corda.core.messaging.CordaRPCOps
@@ -14,8 +16,6 @@ import javax.ws.rs.Path
 import javax.ws.rs.Produces
 import javax.ws.rs.core.MediaType
 import javax.ws.rs.core.Response
-import net.corda.core.contracts.Command
-import net.corda.core.contracts.StateAndContract
 import net.corda.core.contracts.requireThat
 import net.corda.core.transactions.SignedTransaction
 import java.math.BigDecimal
@@ -38,7 +38,6 @@ class TemplateApi(val rpcOps: CordaRPCOps) {
 // *********
 // * Flows *
 // *********
-// Replace Initiator's definition with:
 @InitiatingFlow
 @StartableByRPC
 class ForwardFlow(val initiator: Party, val acceptor: Party, val asset: String, val deliveryPrice: BigDecimal,
@@ -56,33 +55,32 @@ class ForwardFlow(val initiator: Party, val acceptor: Party, val asset: String, 
         // We create a transaction builder.
         val txBuilder = TransactionBuilder(notary = notary)
 
-// We create the transaction components.
-//        val outputState = ForwardState(iouValue, ourIdentity, otherParty)
+        // We create the transaction components.
         val outputState = ForwardState(initiator, acceptor, asset, deliveryPrice, agreementDate, settlementDate, buySell)
         val outputContractAndState = StateAndContract(outputState, FORWARD_CONTRACT_ID)
-        val cmd = Command(ForwardContract.Create(), listOf(initiator.owningKey, acceptor.owningKey))
+        val cmd = Command(ForwardContract.Create(), listOf(ourIdentity.owningKey, acceptor.owningKey))
 
-// We add the items to the builder.
+        // We add the items to the builder.
         txBuilder.withItems(outputContractAndState, cmd)
 
-// Verifying the transaction.
+        // Verifying the transaction.
         txBuilder.verify(serviceHub)
 
-// Signing the transaction.
+        // Signing the transaction.
         val signedTx = serviceHub.signInitialTransaction(txBuilder)
 
-// Creating a session with the other party.
-        val otherPartySession = initiateFlow(acceptor)
+        // Creating a session with the other party.
+        val otherpartySession = initiateFlow(acceptor)
 
-// Obtaining the counterparty's signature.
-        val fullySignedTx = subFlow(CollectSignaturesFlow(signedTx, listOf(otherPartySession), CollectSignaturesFlow.tracker()))
+        // Obtaining the counterparty's signature.
+        val fullySignedTx = subFlow(CollectSignaturesFlow(signedTx, listOf(otherpartySession), CollectSignaturesFlow.tracker()))
 
-// Finalising the transaction.
+        // Finalising the transaction.
         subFlow(FinalityFlow(fullySignedTx))
     }
 }
 
-// Define ForwardFlowResponder:
+// Define IOUFlowResponder:
 @InitiatedBy(ForwardFlow::class)
 class ForwardFlowResponder(val otherPartySession: FlowSession) : FlowLogic<Unit>() {
     @Suspendable
@@ -90,7 +88,7 @@ class ForwardFlowResponder(val otherPartySession: FlowSession) : FlowLogic<Unit>
         val signTransactionFlow = object : SignTransactionFlow(otherPartySession, SignTransactionFlow.tracker()) {
             override fun checkTransaction(stx: SignedTransaction) = requireThat {
                 val output = stx.tx.outputs.single().data
-                "This must be a Forward Contract transaction." using (output is ForwardState)
+                "This must be an IOU transaction." using (output is ForwardState)
             }
         }
 
@@ -102,13 +100,13 @@ class ForwardFlowResponder(val otherPartySession: FlowSession) : FlowLogic<Unit>
 // * Plugins *
 // ***********
 class TemplateWebPlugin : WebServerPluginRegistry {
-    // A list of lambdas that create objects exposing web JAX-RS REST APIs.
+    // A list of classes that expose web JAX-RS REST APIs.
     override val webApis: List<Function<CordaRPCOps, out Any>> = listOf(Function(::TemplateApi))
     //A list of directories in the resources directory that will be served by Jetty under /web.
     // This template's web frontend is accessible at /web/template.
     override val staticServeDirs: Map<String, String> = mapOf(
-        // This will serve the templateWeb directory in resources to /web/template
-        "template" to javaClass.classLoader.getResource("templateWeb").toExternalForm()
+            // This will serve the templateWeb directory in resources to /web/template
+            "template" to javaClass.classLoader.getResource("templateWeb").toExternalForm()
     )
 }
 
