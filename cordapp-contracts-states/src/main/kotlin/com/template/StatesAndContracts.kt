@@ -1,6 +1,7 @@
 package com.template
 
 import net.corda.core.contracts.*
+import net.corda.core.flows.FlowLogicRefFactory
 import net.corda.core.identity.Party
 import net.corda.core.transactions.LedgerTransaction
 import java.math.BigDecimal
@@ -13,8 +14,6 @@ import java.time.Instant
 val FORWARD_CONTRACT_ID = "com.template.ForwardContract"
 
 class ForwardContract : Contract {
-    // Our Create command.
-    class Create : CommandData
 
     override fun verify(tx: LedgerTransaction) {
         val command = tx.commands.requireSingleCommand<CommandData>()
@@ -32,16 +31,17 @@ class ForwardContract : Contract {
                     "There must be two signers." using (command.signers.toSet().size == 2)
                     "The initiator and acceptor must be signers." using (command.signers.containsAll(listOf(
                             out.acceptor.owningKey, out.initiator.owningKey)))
+                    // "Ensure transaction date is before settlement date" using (out.startTimestamp < out.settlementTimestamp)
                 }
             }
 
             is Commands.Settle -> {
-                val out = tx.outputs.single().data as ForwardState
+            val out = tx.outputs.single().data as ForwardState
 
-                requireThat {
-                    "The contract is settled at the specified date" using (out.settlementDate > Instant.now())
-                }
+            requireThat {
+
             }
+        }
 
             else -> throw IllegalArgumentException("Command doesn't exist")
         }
@@ -56,7 +56,12 @@ class ForwardContract : Contract {
 // *********
 // * State *
 // *********
-class ForwardState(val initiator: Party, val acceptor: Party, val asset: String, val deliveryPrice: BigDecimal,
-                   val settlementDate: Instant, val buySell: String) : ContractState {
+data class ForwardState(val initiator: Party, val acceptor: Party, val asset: String, val deliveryPrice: BigDecimal, val settlementTimestamp: Instant, val buySell: String) : SchedulableState {
     override val participants get() = listOf(initiator, acceptor)
+
+    // Defines the scheduled activity to be conducted by the SchedulableState.
+    override fun nextScheduledActivity(thisStateRef: StateRef, flowLogicRefFactory: FlowLogicRefFactory): ScheduledActivity? {
+        return ScheduledActivity(flowLogicRefFactory.create("com.template.ForwardSettleFlow", initiator, acceptor,
+                asset, deliveryPrice, settlementTimestamp, buySell, thisStateRef), settlementTimestamp)
+    }
 }
