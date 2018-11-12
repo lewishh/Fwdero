@@ -1,5 +1,7 @@
 package com.template
 
+import com.template.flows.InitiateFlow
+import net.corda.core.flows.InitiatingFlow
 import net.corda.testing.node.MockNetwork
 import org.junit.After
 import org.junit.Before
@@ -13,7 +15,7 @@ class FlowTests {
 
     init {
         listOf(a, b).forEach {
-            it.registerInitiatedFlow(ForwardFlow::class.java)
+            it.registerInitiatedFlow(InitiateFlow::class.java)
         }
     }
 

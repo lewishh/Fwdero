@@ -1,11 +1,13 @@
 package com.template
 
+import com.template.ForwardState.Companion.calculateCash
 import net.corda.core.contracts.*
 import net.corda.core.flows.FlowLogicRefFactory
 import net.corda.core.identity.Party
 import net.corda.core.transactions.LedgerTransaction
 import java.math.BigDecimal
 import java.time.Instant
+import com.template.base.SpotPrice
 
 // *****************
 // * Contract Code *
@@ -31,37 +33,69 @@ class ForwardContract : Contract {
                     "There must be two signers." using (command.signers.toSet().size == 2)
                     "The initiator and acceptor must be signers." using (command.signers.containsAll(listOf(
                             out.acceptor.owningKey, out.initiator.owningKey)))
-                    // "Ensure transaction date is before settlement date" using (out.startTimestamp < out.settlementTimestamp)
                 }
             }
 
             is Commands.Settle -> {
-            val out = tx.outputs.single().data as ForwardState
+                requireThat {
+                    "One input state consumed" using (tx.inputs.size == 1)
+                    "One output state" using (tx.outputs.size == 1)
+//                    "Destroy after settlement" using (tx.outputs.isEmpty()) // Iffy
 
-            requireThat {
-
+                    "A ForwardState is consumed" using (tx.inputsOfType<ForwardState>().size == 1)
+                    "No other inputs are consumed" using (tx.inputs.size == 1)
+                    "A new ForwardState is created" using (tx.outputsOfType<ForwardState>().size == 1)
+                    "No other states are created" using (tx.outputs.size == 1)
+                }
             }
-        }
 
             else -> throw IllegalArgumentException("Command doesn't exist")
         }
     }
 
+    // Abstract methods, cannot store state
     interface Commands: CommandData {
         class Create: TypeOnlyCommandData(), Commands
         class Settle: TypeOnlyCommandData(), Commands
     }
+
+    class OracleCommand(val spotPrice: SpotPrice) : CommandData
 }
 
 // *********
 // * State *
 // *********
-data class ForwardState(val initiator: Party, val acceptor: Party, val asset: String, val deliveryPrice: BigDecimal, val settlementTimestamp: Instant, val buySell: String) : SchedulableState {
+data class ForwardState(val initiator: Party, val acceptor: Party, val instrument: String, val instrumentQuantity: BigDecimal, val deliveryPrice: BigDecimal,
+                        val settlementTimestamp: Instant, val settlementType: String, val position: String) : SchedulableState {
+
     override val participants get() = listOf(initiator, acceptor)
 
     // Defines the scheduled activity to be conducted by the SchedulableState.
     override fun nextScheduledActivity(thisStateRef: StateRef, flowLogicRefFactory: FlowLogicRefFactory): ScheduledActivity? {
-        return ScheduledActivity(flowLogicRefFactory.create("com.template.ForwardSettleFlow", initiator, acceptor,
-                asset, deliveryPrice, settlementTimestamp, buySell, thisStateRef), settlementTimestamp)
+        if (settlementType == "cash") {
+            return ScheduledActivity(flowLogicRefFactory.create("com.template.flows.SettleCashFlow", initiator, acceptor,
+                    instrument, instrumentQuantity, deliveryPrice, settlementTimestamp, settlementType, position, thisStateRef, this), settlementTimestamp)
+        } else if (settlementType == "physical") {
+            return ScheduledActivity(flowLogicRefFactory.create("com.template.flows.SettlePhysicalFlow", initiator, acceptor,
+                    instrument, instrumentQuantity, deliveryPrice, settlementTimestamp, settlementType, position, thisStateRef), settlementTimestamp)
+        }
+
+        return null
+    }
+
+    companion object {
+        fun calculateCash(forwardState: ForwardState, oracle: SpotPrice): String {
+            if (forwardState.deliveryPrice == oracle.value) {
+                return "No money owed"
+            } else if (forwardState.deliveryPrice < oracle.value) {
+                val difference = (oracle.value - forwardState.deliveryPrice) * forwardState.instrumentQuantity
+                return "Seller owes Buyer $difference"
+            } else if (forwardState.deliveryPrice > oracle.value) {
+                val difference = (forwardState.deliveryPrice - oracle.value) * forwardState.instrumentQuantity
+                return "Buyer owes Seller $difference"
+            }
+
+            return "Not a cash settlement"
+        }
     }
 }

@@ -1,0 +1,8 @@
+package com.template.base
+import net.corda.core.serialization.CordaSerializable
+import java.math.BigDecimal
+import java.time.Instant
+
+/** Represents the price of a given instrument at a given point in time. */
+@CordaSerializable
+data class SpotPrice(val instrument: String, val settlementTimestamp: Instant, val value: BigDecimal)
