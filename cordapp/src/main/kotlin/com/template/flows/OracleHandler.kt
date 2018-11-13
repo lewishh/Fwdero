@@ -24,11 +24,11 @@ class QueryOracleHandler(private val counterpartySession: FlowSession) : FlowLog
     @Suspendable
     override fun call() {
         progressTracker.currentStep = RECEIVING
-        val (instrument, atTime) = counterpartySession.receive<Pair<String, Instant>>().unwrap { it }
+        val instrument = counterpartySession.receive<String>().unwrap { it }
 
         progressTracker.currentStep = RETRIEVING
         val spot = try {
-            val spotPrice = serviceHub.cordaService(Oracle::class.java).querySpot(instrument, atTime)
+            val spotPrice = serviceHub.cordaService(Oracle::class.java).querySpot(instrument)
         } catch (e: Exception) {
             throw FlowException(e)
         }

@@ -7,7 +7,6 @@ import net.corda.core.node.ServiceHub
 import net.corda.core.node.services.CordaService
 import net.corda.core.serialization.SingletonSerializeAsToken
 import net.corda.core.transactions.FilteredTransaction
-import java.time.Instant
 import net.corda.core.contracts.Command
 
 @CordaService
@@ -17,8 +16,8 @@ class Oracle(val services: ServiceHub) : SingletonSerializeAsToken() {
     private val knownSpots = KNOWN_SPOTS
 
     /** Returns spot for a given instrument. */
-    fun querySpot(instrument: String, settlementTimestamp: Instant): SpotPrice {
-        return knownSpots.find { it.instrument == instrument && it.settlementTimestamp == settlementTimestamp}
+    fun querySpot(instrument: String): SpotPrice {
+        return knownSpots.find { it.instrument == instrument}
                 ?: throw IllegalArgumentException("Unknown instrument")
     }
 
@@ -41,8 +40,8 @@ class Oracle(val services: ServiceHub) : SingletonSerializeAsToken() {
             elem is Command<*> && elem.value is ForwardContract.OracleCommand -> {
                 val cmdData = elem.value as ForwardContract.OracleCommand
                 val cmdSpotPrice = cmdData.spotPrice
-                myKey in elem.signers
-                        && querySpot(cmdSpotPrice.instrument, cmdSpotPrice.settlementTimestamp) == cmdData.spotPrice}
+                myKey in elem.signers && querySpot(cmdSpotPrice.instrument) == cmdData.spotPrice
+            }
             else -> false
         }
 

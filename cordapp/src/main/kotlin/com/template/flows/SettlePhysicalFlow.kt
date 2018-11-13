@@ -21,7 +21,7 @@ import java.time.Instant
 @StartableByRPC
 class SettlePhysicalFlow(val initiator: Party, val acceptor: Party, val instrument: String, val instrumentQuantity: BigDecimal,
                          val deliveryPrice: BigDecimal, val settlementTimestamp: Instant, val settlementType: String, val position: String,
-                     val thisStateRef: StateRef) : FlowLogic<String>() {
+                     val thisStateRef: StateRef) : FlowLogic<SignedTransaction>() {
 
     companion object {
         object GENERATING_TRANSACTION : ProgressTracker.Step("Updating Forward transaction for settlement process (ForwardSettleFlow)")
@@ -40,7 +40,7 @@ class SettlePhysicalFlow(val initiator: Party, val acceptor: Party, val instrume
     override val progressTracker = tracker()
 
     @Suspendable
-    override fun call(): String {
+    override fun call(): SignedTransaction {
 
         progressTracker.currentStep = GENERATING_TRANSACTION
         val input = serviceHub.toStateAndRef<ForwardState>(thisStateRef)
@@ -55,8 +55,8 @@ class SettlePhysicalFlow(val initiator: Party, val acceptor: Party, val instrume
         val signedTx = serviceHub.signInitialTransaction(txBuilder)
 
         progressTracker.currentStep = FINALISING_TRANSACTION
-        subFlow(FinalityFlow(signedTx))
-        return "Seller: physically deliver the asset, Buyer: pay for the asset"
+        return subFlow(FinalityFlow(signedTx, FINALISING_TRANSACTION.childProgressTracker()))
+        // return "Seller: physically deliver the asset, Buyer: pay for the asset"
     }
 }
 

@@ -9,7 +9,6 @@ import com.template.flows.OracleQuery
 import com.template.oracle.Oracle
 import firstIdentityByName
 import firstNotary
-import getStateAndRefByLinearId
 import io.netty.handler.codec.rtsp.RtspMethods.SETUP
 import net.corda.core.contracts.Command
 import net.corda.core.contracts.StateRef
@@ -33,7 +32,7 @@ import java.util.function.Predicate
 @StartableByRPC
 class SettleCashFlow(val initiator: Party, val acceptor: Party, val instrument: String, val instrumentQuantity: BigDecimal, val deliveryPrice: BigDecimal,
                         val settlementTimestamp: Instant, val settlementType: String, val position: String, val thisStateRef: StateRef,
-                     val forwardState: ForwardState) : FlowLogic<SignedTransaction>() {
+                     val forwardState: ForwardState) : FlowLogic<Unit>() {
 
     companion object {
         object SET_UP : ProgressTracker.Step("Initialising flow.")
@@ -58,14 +57,14 @@ class SettleCashFlow(val initiator: Party, val acceptor: Party, val instrument: 
     override val progressTracker = tracker()
 
     @Suspendable
-    override fun call(): SignedTransaction {
+    override fun call() {
         progressTracker.currentStep = SET_UP
         val notary = serviceHub.firstNotary()
         val oracle = serviceHub.networkMapCache.getNodeByLegalName(ORACLE_NAME)?.legalIdentities?.first()
                 ?: throw IllegalArgumentException("Requested oracle $ORACLE_NAME not found on network.")
 
         progressTracker.currentStep = QUERYING_THE_ORACLE
-        val spotPrice = subFlow(OracleQuery(oracle, forwardState.instrument, settlementTimestamp))
+        val spotPrice = subFlow(OracleQuery(oracle, forwardState.instrument))
 
         progressTracker.currentStep = BUILDING_THE_TX
         val requiredSigners = listOf(forwardState.initiator, forwardState.acceptor).map { it.owningKey }
@@ -102,7 +101,7 @@ class SettleCashFlow(val initiator: Party, val acceptor: Party, val instrument: 
         val stx = subFlow(CollectSignaturesFlow(ptxWithOracleSig, listOf(issuerSession), OTHERS_SIGN.childProgressTracker()))
 
         progressTracker.currentStep = FINALISING
-        return subFlow(FinalityFlow(stx, FINALISING.childProgressTracker()))
+        subFlow(FinalityFlow(stx, FINALISING.childProgressTracker()))
     }
 }
 
