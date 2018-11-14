@@ -18,7 +18,7 @@ import java.time.Instant
 @InitiatingFlow
 @StartableByRPC
 class Initiate(val initiator: Party, val acceptor: Party, val instrument: String, val instrumentQuantity: BigDecimal, val deliveryPrice: BigDecimal,
-               val settlementTimestamp: Instant, val settlementType: String, val position: String) : FlowLogic<Unit>() {
+               val settlementTimestamp: Instant, val settlementType: String, val position: String) : FlowLogic<SignedTransaction>() {
 
     companion object {
         object GENERATING_TRANSACTION : ProgressTracker.Step("Generating Forward transaction (Initiate)")
@@ -39,7 +39,7 @@ class Initiate(val initiator: Party, val acceptor: Party, val instrument: String
 
     /** The flow logic is encapsulated within the call() method. */
     @Suspendable
-    override fun call() {
+    override fun call(): SignedTransaction {
         // We retrieve the notary identity from the network map.
         val notary = serviceHub.networkMapCache.notaryIdentities[0]
 
@@ -50,7 +50,7 @@ class Initiate(val initiator: Party, val acceptor: Party, val instrument: String
         progressTracker.currentStep = GENERATING_TRANSACTION
         val outputState = ForwardState(initiator, acceptor, instrument, instrumentQuantity, deliveryPrice, settlementTimestamp, settlementType, position)
         val outputContractAndState = StateAndContract(outputState, FORWARD_CONTRACT_ID)
-        val cmd = Command(ForwardContract.Commands.Issue(), listOf(ourIdentity.owningKey, acceptor.owningKey))
+        val cmd = Command(ForwardContract.Commands.Create(), listOf(ourIdentity.owningKey, acceptor.owningKey))
 
         // We add the items to the builder.
         txBuilder.withItems(outputContractAndState, cmd)
@@ -70,7 +70,7 @@ class Initiate(val initiator: Party, val acceptor: Party, val instrument: String
 
         // Finalising the transaction.
         progressTracker.currentStep = FINALISING_TRANSACTION
-        subFlow(FinalityFlow(fullySignedTx))
+        return subFlow(FinalityFlow(fullySignedTx))
     }
 }
 

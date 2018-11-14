@@ -17,11 +17,11 @@ class ForwardContract : Contract {
     // Our Create command.
     interface Commands : CommandData {
         class Settle : TypeOnlyCommandData(), Commands
-        class Issue : TypeOnlyCommandData(), Commands
+        class Create : TypeOnlyCommandData(), Commands
     }
 
     override fun verify(tx: LedgerTransaction) {
-        val command = tx.commands.requireSingleCommand<ForwardContract.Commands>()
+        val command = tx.commands.requireSingleCommand<Commands>()
         val out = tx.outputsOfType<ForwardState>().single()
 
         when (command.value) {
@@ -36,14 +36,14 @@ class ForwardContract : Contract {
                 }
             }
 
-            is Commands.Issue -> {
+            is Commands.Create -> {
                 val timestamp = Instant.now()
 
                 requireThat {
                     "The initiator and the acceptor cannot be the same entity." using (out.initiator != out.acceptor)
                     "deliveryPrice must be non-negative" using (out.deliveryPrice.compareTo(BigDecimal.ZERO) > 0)
                     "Settlement data not in the past" using (timestamp < out.settlementTimestamp)
-                    "can't reissue an existing state" using tx.inputs.isEmpty()
+                    "Don't reissue existing / no inputs consumed" using tx.inputs.isEmpty()
                     "There must be two signers." using (command.signers.toSet().size == 2)
                     "The initiator and acceptor must be signers." using (command.signers.containsAll(listOf(
                             out.acceptor.owningKey, out.initiator.owningKey)))
