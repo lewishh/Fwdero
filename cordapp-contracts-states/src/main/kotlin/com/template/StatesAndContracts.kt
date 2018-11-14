@@ -1,6 +1,5 @@
 package com.template
 
-import com.template.ForwardState.Companion.calculateCash
 import net.corda.core.contracts.*
 import net.corda.core.flows.FlowLogicRefFactory
 import net.corda.core.identity.Party
@@ -18,34 +17,33 @@ val FORWARD_CONTRACT_ID = "com.template.ForwardContract"
 class ForwardContract : Contract {
 
     override fun verify(tx: LedgerTransaction) {
-        val command = tx.commands.requireSingleCommand<CommandData>()
+        val command = tx.commands.requireSingleCommand<Commands>()
+        val out = tx.outputs.single().data as ForwardState
 
         when (command.value) {
             is Commands.Create -> {
-                val out = tx.outputs.single().data as ForwardState
+                val timestamp = Instant.now()
 
                 requireThat {
-                    "No inputs should be consumed when issuing the Forward." using (tx.inputs.isEmpty())
-                    "There should be one output state of type ForwardState." using (tx.outputs.size == 1)
-                    "The price must be non-negative." using (out.deliveryPrice.compareTo(BigDecimal.ZERO) > 0)
                     "The initiator and the acceptor cannot be the same entity." using (out.initiator != out.acceptor)
-
+                    "deliveryPrice must be non-negative" using (out.deliveryPrice.compareTo(BigDecimal.ZERO) > 0)
+                    "Settlement data not in the past" using (timestamp < out.settlementTimestamp)
+                    "Don't reissue existing / no inputs consumed" using tx.inputs.isEmpty()
                     "There must be two signers." using (command.signers.toSet().size == 2)
                     "The initiator and acceptor must be signers." using (command.signers.containsAll(listOf(
                             out.acceptor.owningKey, out.initiator.owningKey)))
+                    "There should be one output state of type ForwardState." using (tx.outputs.size == 1)
                 }
             }
 
             is Commands.Settle -> {
-                requireThat {
-                    "One input state consumed" using (tx.inputs.size == 1)
-                    "One output state" using (tx.outputs.size == 1)
-//                    "Destroy after settlement" using (tx.outputs.isEmpty()) // Iffy
+                val timestamp = Instant.now()
 
-                    "A ForwardState is consumed" using (tx.inputsOfType<ForwardState>().size == 1)
-                    "No other inputs are consumed" using (tx.inputs.size == 1)
-                    "A new ForwardState is created" using (tx.outputsOfType<ForwardState>().size == 1)
-                    "No other states are created" using (tx.outputs.size == 1)
+                requireThat {
+                    "Must have matured" using (timestamp >= out.settlementTimestamp)
+                    "The initiator and acceptor must be signers." using (command.signers.containsAll(listOf(
+                            out.acceptor.owningKey, out.initiator.owningKey)))
+                    "Must destroy the contract after" using tx.outputs.isEmpty()
                 }
             }
 

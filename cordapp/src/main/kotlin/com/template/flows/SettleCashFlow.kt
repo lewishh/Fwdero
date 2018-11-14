@@ -5,6 +5,7 @@ import com.template.FORWARD_CONTRACT_ID
 import com.template.ForwardContract
 import com.template.ForwardState
 import com.template.base.ORACLE_NAME
+import com.template.base.SpotPrice
 import com.template.flows.OracleQuery
 import com.template.oracle.Oracle
 import firstIdentityByName
@@ -30,9 +31,9 @@ import java.util.function.Predicate
 @InitiatingFlow
 @SchedulableFlow
 @StartableByRPC
-class SettleCashFlow(val initiator: Party, val acceptor: Party, val instrument: String, val instrumentQuantity: BigDecimal, val deliveryPrice: BigDecimal,
-                        val settlementTimestamp: Instant, val settlementType: String, val position: String, val thisStateRef: StateRef,
-                     val forwardState: ForwardState) : FlowLogic<Unit>() {
+class SettleCashFlow(private val initiator: Party, private val acceptor: Party, private val instrument: String, private val instrumentQuantity: BigDecimal,
+                     private val deliveryPrice: BigDecimal, private val settlementTimestamp: Instant, private val settlementType: String, private val position: String,
+                     private val thisStateRef: StateRef, private val forwardState: ForwardState) : FlowLogic<SignedTransaction>() {
 
     companion object {
         object SET_UP : ProgressTracker.Step("Initialising flow.")
@@ -57,14 +58,14 @@ class SettleCashFlow(val initiator: Party, val acceptor: Party, val instrument: 
     override val progressTracker = tracker()
 
     @Suspendable
-    override fun call() {
+    override fun call(): SignedTransaction {
         progressTracker.currentStep = SET_UP
         val notary = serviceHub.firstNotary()
         val oracle = serviceHub.networkMapCache.getNodeByLegalName(ORACLE_NAME)?.legalIdentities?.first()
                 ?: throw IllegalArgumentException("Requested oracle $ORACLE_NAME not found on network.")
 
         progressTracker.currentStep = QUERYING_THE_ORACLE
-        val spotPrice = subFlow(OracleQuery(oracle, forwardState.instrument))
+        val spotPrice: SpotPrice = subFlow(OracleQuery(oracle, instrument))
 
         progressTracker.currentStep = BUILDING_THE_TX
         val requiredSigners = listOf(forwardState.initiator, forwardState.acceptor).map { it.owningKey }
@@ -101,15 +102,15 @@ class SettleCashFlow(val initiator: Party, val acceptor: Party, val instrument: 
         val stx = subFlow(CollectSignaturesFlow(ptxWithOracleSig, listOf(issuerSession), OTHERS_SIGN.childProgressTracker()))
 
         progressTracker.currentStep = FINALISING
-        subFlow(FinalityFlow(stx, FINALISING.childProgressTracker()))
+        return subFlow(FinalityFlow(stx, FINALISING.childProgressTracker()))
     }
 }
 
 @InitiatingFlow
 @InitiatedBy(SettleCashFlow::class)
-class SettleCashFlowResponder(val counterpartySession: FlowSession) : FlowLogic<SignedTransaction>() {
+class SettleCashFlowResponder(val counterpartySession: FlowSession) : FlowLogic<Unit>() {
     @Suspendable
-    override fun call(): SignedTransaction {
+    override fun call() {
         val flow = object : SignTransactionFlow(counterpartySession) {
             @Suspendable
             override fun checkTransaction(stx: SignedTransaction) {
@@ -120,6 +121,6 @@ class SettleCashFlowResponder(val counterpartySession: FlowSession) : FlowLogic<
         }
 
         val stx = subFlow(flow)
-        return waitForLedgerCommit(stx.id)
+        waitForLedgerCommit(stx.id)
     }
 }
