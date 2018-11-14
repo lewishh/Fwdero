@@ -12,7 +12,6 @@ import java.time.Instant
 
 /** Called by the client to request an instrument's spot price at a point in time from an oracle. */
 @InitiatingFlow
-@CordaSerializable
 class OracleQuery(private val oracle: Party, private val instrument: String) : FlowLogic<SpotPrice>() {
     @Suspendable override fun call(): SpotPrice {
         val oracleSession = initiateFlow(oracle)

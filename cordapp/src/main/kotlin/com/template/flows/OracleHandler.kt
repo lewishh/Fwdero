@@ -6,12 +6,13 @@ import net.corda.core.flows.FlowException
 import net.corda.core.flows.FlowLogic
 import net.corda.core.flows.FlowSession
 import net.corda.core.flows.InitiatedBy
+import net.corda.core.serialization.CordaSerializable
 import net.corda.core.utilities.ProgressTracker
 import net.corda.core.utilities.unwrap
-import java.time.Instant
 
 /** Called by the oracle to provide a stock's spot price to a client. */
 @InitiatedBy(OracleQuery::class)
+@CordaSerializable
 class QueryOracleHandler(private val counterpartySession: FlowSession) : FlowLogic<Unit>() {
     companion object {
         object RECEIVING : ProgressTracker.Step("Received stock to provide the spot price for.")
@@ -27,13 +28,9 @@ class QueryOracleHandler(private val counterpartySession: FlowSession) : FlowLog
         val instrument = counterpartySession.receive<String>().unwrap { it }
 
         progressTracker.currentStep = RETRIEVING
-        val spot = try {
-            val spotPrice = serviceHub.cordaService(Oracle::class.java).querySpot(instrument)
-        } catch (e: Exception) {
-            throw FlowException(e)
-        }
+        val spotPrice = serviceHub.cordaService(Oracle::class.java).querySpot(instrument)
 
         progressTracker.currentStep = SENDING
-        counterpartySession.send(spot)
+        counterpartySession.send(spotPrice)
     }
 }

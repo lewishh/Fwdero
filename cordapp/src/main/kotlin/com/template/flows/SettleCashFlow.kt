@@ -19,6 +19,7 @@ import net.corda.core.flows.*
 import net.corda.core.identity.CordaX500Name
 import net.corda.core.identity.Party
 import net.corda.core.node.ServiceHub
+import net.corda.core.serialization.CordaSerializable
 import net.corda.core.transactions.SignedTransaction
 import net.corda.core.transactions.TransactionBuilder
 import net.corda.core.utilities.ProgressTracker
@@ -31,6 +32,7 @@ import java.util.function.Predicate
 @InitiatingFlow
 @SchedulableFlow
 @StartableByRPC
+@CordaSerializable
 class SettleCashFlow(private val initiator: Party, private val acceptor: Party, private val instrument: String, private val instrumentQuantity: BigDecimal,
                      private val deliveryPrice: BigDecimal, private val settlementTimestamp: Instant, private val settlementType: String, private val position: String,
                      private val thisStateRef: StateRef, private val forwardState: ForwardState) : FlowLogic<SignedTransaction>() {
@@ -44,7 +46,7 @@ class SettleCashFlow(private val initiator: Party, private val acceptor: Party, 
         object WE_SIGN : ProgressTracker.Step("Signing transaction.")
         object ORACLE_SIGNS : ProgressTracker.Step("Requesting oracle signature.")
         object OTHERS_SIGN : ProgressTracker.Step("Collecting counterparty signatures.") {
-            override fun childProgressTracker() = FinalityFlow.tracker()
+            override fun childProgressTracker() = CollectSignaturesFlow.tracker()
         }
 
         object FINALISING : ProgressTracker.Step("Finalising transaction") {
@@ -65,11 +67,11 @@ class SettleCashFlow(private val initiator: Party, private val acceptor: Party, 
                 ?: throw IllegalArgumentException("Requested oracle $ORACLE_NAME not found on network.")
 
         progressTracker.currentStep = QUERYING_THE_ORACLE
-        val spotPrice: SpotPrice = subFlow(OracleQuery(oracle, instrument))
+        val spotPrice = subFlow(OracleQuery(oracle, instrument))
 
         progressTracker.currentStep = BUILDING_THE_TX
         val requiredSigners = listOf(forwardState.initiator, forwardState.acceptor).map { it.owningKey }
-        val settleCommand = Command(ForwardContract.Commands.Settle(), requiredSigners)
+        val settleCommand = Command(ForwardContract.Commands.SettleCash(), requiredSigners)
         val oracleCommand = Command(ForwardContract.OracleCommand(spotPrice), oracle.owningKey)
 
         val builder = TransactionBuilder(notary)
@@ -77,8 +79,8 @@ class SettleCashFlow(private val initiator: Party, private val acceptor: Party, 
                 .addCommand(settleCommand)
                 .addCommand(oracleCommand)
 
-        progressTracker.currentStep = CHECK_CASH
-        val forwardPrice = ForwardState.calculateCash(forwardState, spotPrice)
+//        progressTracker.currentStep = CHECK_CASH
+//        val forwardPrice = ForwardState.calculateCash(forwardState, spotPrice)
 
         progressTracker.currentStep = VERIFYING_THE_TX
         builder.verify(serviceHub)
@@ -87,7 +89,6 @@ class SettleCashFlow(private val initiator: Party, private val acceptor: Party, 
         val ptx = serviceHub.signInitialTransaction(builder)
 
         progressTracker.currentStep = ORACLE_SIGNS
-        // Only expose single command to network
         val ftx = ptx.buildFilteredTransaction(Predicate {
             it is Command<*>
                     && it.value is ForwardContract.OracleCommand
@@ -103,14 +104,15 @@ class SettleCashFlow(private val initiator: Party, private val acceptor: Party, 
 
         progressTracker.currentStep = FINALISING
         return subFlow(FinalityFlow(stx, FINALISING.childProgressTracker()))
+
     }
 }
 
 @InitiatingFlow
 @InitiatedBy(SettleCashFlow::class)
-class SettleCashFlowResponder(val counterpartySession: FlowSession) : FlowLogic<Unit>() {
+class SettleCashFlowResponder(val counterpartySession: FlowSession) : FlowLogic<SignedTransaction>() {
     @Suspendable
-    override fun call() {
+    override fun call(): SignedTransaction {
         val flow = object : SignTransactionFlow(counterpartySession) {
             @Suspendable
             override fun checkTransaction(stx: SignedTransaction) {
@@ -121,6 +123,6 @@ class SettleCashFlowResponder(val counterpartySession: FlowSession) : FlowLogic<
         }
 
         val stx = subFlow(flow)
-        waitForLedgerCommit(stx.id)
+        return waitForLedgerCommit(stx.id)
     }
 }

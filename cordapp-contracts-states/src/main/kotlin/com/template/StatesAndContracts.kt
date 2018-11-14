@@ -18,32 +18,44 @@ class ForwardContract : Contract {
 
     override fun verify(tx: LedgerTransaction) {
         val command = tx.commands.requireSingleCommand<Commands>()
-        val out = tx.outputs.single().data as ForwardState
 
         when (command.value) {
             is Commands.Create -> {
+                val out = tx.outputs.single().data as ForwardState
                 val timestamp = Instant.now()
 
                 requireThat {
                     "The initiator and the acceptor cannot be the same entity." using (out.initiator != out.acceptor)
                     "deliveryPrice must be non-negative" using (out.deliveryPrice.compareTo(BigDecimal.ZERO) > 0)
-                    "Settlement data not in the past" using (timestamp < out.settlementTimestamp)
+//                    "Settlement date not in the past" using (timestamp < out.settlementTimestamp)
                     "Don't reissue existing / no inputs consumed" using tx.inputs.isEmpty()
-                    "There must be two signers." using (command.signers.toSet().size == 2)
+                    "Initiator, acceptor and Notary must sign." using (command.signers.toSet().size == 3)
                     "The initiator and acceptor must be signers." using (command.signers.containsAll(listOf(
                             out.acceptor.owningKey, out.initiator.owningKey)))
                     "There should be one output state of type ForwardState." using (tx.outputs.size == 1)
                 }
             }
 
-            is Commands.Settle -> {
+            is Commands.SettlePhysical -> {
+                val out = tx.outputs.single().data as ForwardState
                 val timestamp = Instant.now()
 
                 requireThat {
                     "Must have matured" using (timestamp >= out.settlementTimestamp)
-                    "The initiator and acceptor must be signers." using (command.signers.containsAll(listOf(
-                            out.acceptor.owningKey, out.initiator.owningKey)))
-                    "Must destroy the contract after" using tx.outputs.isEmpty()
+                    "There should be one output state of type ForwardState." using (tx.outputs.size == 1)
+//                    "The initiator and acceptor must be signers." using (command.signers.containsAll(listOf(
+//                            out.acceptor.owningKey, out.initiator.owningKey)))
+//                    "Must destroy the contract after" using tx.outputs.isEmpty()
+                }
+            }
+
+            is Commands.SettleCash -> {
+                val out = tx.outputs.single().data as ForwardState
+                val timestamp = Instant.now()
+
+                requireThat {
+                    "Must have matured" using (timestamp >= out.settlementTimestamp)
+                    "There should be one output state of type ForwardState." using (tx.outputs.size == 1)
                 }
             }
 
@@ -54,7 +66,8 @@ class ForwardContract : Contract {
     // Abstract methods, cannot store state
     interface Commands: CommandData {
         class Create: TypeOnlyCommandData(), Commands
-        class Settle: TypeOnlyCommandData(), Commands
+        class SettlePhysical: TypeOnlyCommandData(), Commands
+        class SettleCash: TypeOnlyCommandData(), Commands
     }
 
     class OracleCommand(val spotPrice: SpotPrice) : CommandData
@@ -82,14 +95,14 @@ data class ForwardState(val initiator: Party, val acceptor: Party, val instrumen
     }
 
     companion object {
-        fun calculateCash(forwardState: ForwardState, oracle: SpotPrice): String {
-            if (forwardState.deliveryPrice == oracle.value) {
+        fun calculateCash(forwardState: ForwardState, oracleResults: SpotPrice): String {
+            if (forwardState.deliveryPrice == oracleResults.value) {
                 return "No money owed"
-            } else if (forwardState.deliveryPrice < oracle.value) {
-                val difference = (oracle.value - forwardState.deliveryPrice) * forwardState.instrumentQuantity
+            } else if (forwardState.deliveryPrice < oracleResults.value) {
+                val difference = (oracleResults.value - forwardState.deliveryPrice) * forwardState.instrumentQuantity
                 return "Seller owes Buyer $difference"
-            } else if (forwardState.deliveryPrice > oracle.value) {
-                val difference = (forwardState.deliveryPrice - oracle.value) * forwardState.instrumentQuantity
+            } else if (forwardState.deliveryPrice > oracleResults.value) {
+                val difference = (forwardState.deliveryPrice - oracleResults.value) * forwardState.instrumentQuantity
                 return "Buyer owes Seller $difference"
             }
 

@@ -45,7 +45,7 @@ class SettlePhysicalFlow(val initiator: Party, val acceptor: Party, val instrume
         progressTracker.currentStep = GENERATING_TRANSACTION
         val input = serviceHub.toStateAndRef<ForwardState>(thisStateRef)
         val output = ForwardState(initiator, acceptor, instrument, instrumentQuantity, deliveryPrice, settlementTimestamp, settlementType, position)
-        val settleCommand = Command(ForwardContract.Commands.Settle(), ourIdentity.owningKey)
+        val settleCommand = Command(ForwardContract.Commands.SettlePhysical(), ourIdentity.owningKey)
         val txBuilder = TransactionBuilder(serviceHub.networkMapCache.notaryIdentities.first())
                 .addInputState(input)
                 .addOutputState(output, FORWARD_CONTRACT_ID)

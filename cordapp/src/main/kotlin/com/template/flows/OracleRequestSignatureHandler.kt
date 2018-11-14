@@ -6,12 +6,14 @@ import net.corda.core.flows.FlowException
 import net.corda.core.flows.FlowLogic
 import net.corda.core.flows.FlowSession
 import net.corda.core.flows.InitiatedBy
+import net.corda.core.serialization.CordaSerializable
 import net.corda.core.transactions.FilteredTransaction
 import net.corda.core.utilities.ProgressTracker
 import net.corda.core.utilities.unwrap
 
 /** Called by the oracle to provide a signature over a transaction. */
 @InitiatedBy(OracleRequestSignature::class)
+@CordaSerializable
 class OracleRequestSignatureHandler(private val counterpartySession: FlowSession) : FlowLogic<Unit>() {
     companion object {
         object RECEIVING : ProgressTracker.Step("Received filtered transaction to sign over.")
