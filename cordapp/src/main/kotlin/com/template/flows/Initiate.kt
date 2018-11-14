@@ -17,13 +17,13 @@ import java.time.Instant
 
 @InitiatingFlow
 @StartableByRPC
-class InitiateFlow(val initiator: Party, val acceptor: Party, val instrument: String, val instrumentQuantity: BigDecimal, val deliveryPrice: BigDecimal,
-                   val settlementTimestamp: Instant, val settlementType: String, val position: String) : FlowLogic<SignedTransaction>() {
+class Initiate(val initiator: Party, val acceptor: Party, val instrument: String, val instrumentQuantity: BigDecimal, val deliveryPrice: BigDecimal,
+               val settlementTimestamp: Instant, val settlementType: String, val position: String) : FlowLogic<Unit>() {
 
     companion object {
-        object GENERATING_TRANSACTION : ProgressTracker.Step("Generating Forward transaction (InitiateFlow)")
-        object SIGNING_TRANSACTION : ProgressTracker.Step("Signing transaction with our private key (InitiateFlow)")
-        object FINALISING_TRANSACTION : ProgressTracker.Step("Recording transaction (InitiateFlow)") {
+        object GENERATING_TRANSACTION : ProgressTracker.Step("Generating Forward transaction (Initiate)")
+        object SIGNING_TRANSACTION : ProgressTracker.Step("Signing transaction with our private key (Initiate)")
+        object FINALISING_TRANSACTION : ProgressTracker.Step("Recording transaction (Initiate)") {
             override fun childProgressTracker() = FinalityFlow.tracker()
         }
 
@@ -39,7 +39,7 @@ class InitiateFlow(val initiator: Party, val acceptor: Party, val instrument: St
 
     /** The flow logic is encapsulated within the call() method. */
     @Suspendable
-    override fun call(): SignedTransaction {
+    override fun call() {
         // We retrieve the notary identity from the network map.
         val notary = serviceHub.networkMapCache.notaryIdentities[0]
 
@@ -50,7 +50,7 @@ class InitiateFlow(val initiator: Party, val acceptor: Party, val instrument: St
         progressTracker.currentStep = GENERATING_TRANSACTION
         val outputState = ForwardState(initiator, acceptor, instrument, instrumentQuantity, deliveryPrice, settlementTimestamp, settlementType, position)
         val outputContractAndState = StateAndContract(outputState, FORWARD_CONTRACT_ID)
-        val cmd = Command(ForwardContract.Commands.Create(), listOf(ourIdentity.owningKey, acceptor.owningKey))
+        val cmd = Command(ForwardContract.Commands.Issue(), listOf(ourIdentity.owningKey, acceptor.owningKey))
 
         // We add the items to the builder.
         txBuilder.withItems(outputContractAndState, cmd)
@@ -70,15 +70,15 @@ class InitiateFlow(val initiator: Party, val acceptor: Party, val instrument: St
 
         // Finalising the transaction.
         progressTracker.currentStep = FINALISING_TRANSACTION
-        return subFlow(FinalityFlow(fullySignedTx))
+        subFlow(FinalityFlow(fullySignedTx))
     }
 }
 
 // Define InitiateFlowResponder:
-@InitiatedBy(InitiateFlow::class)
-class InitiateFlowResponder(val otherPartySession: FlowSession) : FlowLogic<SignedTransaction>() {
+@InitiatedBy(Initiate::class)
+class InitiateResponder(val otherPartySession: FlowSession) : FlowLogic<Unit>() {
     @Suspendable
-    override fun call(): SignedTransaction {
+    override fun call() {
         val signTransactionFlow = object : SignTransactionFlow(otherPartySession, SignTransactionFlow.tracker()) {
             override fun checkTransaction(stx: SignedTransaction) = requireThat {
                 val output = stx.tx.outputs.single().data
@@ -86,6 +86,6 @@ class InitiateFlowResponder(val otherPartySession: FlowSession) : FlowLogic<Sign
             }
         }
 
-        return subFlow(signTransactionFlow)
+        subFlow(signTransactionFlow)
     }
 }

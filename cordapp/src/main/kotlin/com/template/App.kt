@@ -3,9 +3,7 @@ package com.template
 import co.paralleluniverse.fibers.Suspendable
 import net.corda.core.contracts.Command
 import net.corda.core.contracts.StateAndContract
-import net.corda.core.contracts.StateRef
 import net.corda.core.flows.*
-import net.corda.core.identity.Party
 import net.corda.core.messaging.CordaRPCOps
 import net.corda.core.serialization.SerializationWhitelist
 import net.corda.core.transactions.TransactionBuilder
@@ -18,6 +16,7 @@ import javax.ws.rs.Produces
 import javax.ws.rs.core.MediaType
 import javax.ws.rs.core.Response
 import net.corda.core.contracts.requireThat
+import net.corda.core.identity.Party
 import net.corda.core.transactions.SignedTransaction
 import java.math.BigDecimal
 import java.time.Instant
