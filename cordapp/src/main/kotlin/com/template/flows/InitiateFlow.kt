@@ -22,8 +22,11 @@ class InitiateFlow(val initiator: Party, val acceptor: Party, val instrument: St
 
     companion object {
         object GENERATING_TRANSACTION : ProgressTracker.Step("Generating Forward transaction (InitiateFlow)")
-        object SIGNING_TRANSACTION : ProgressTracker.Step("Signing transaction with our private key (InitiateFlow)")
-        object FINALISING_TRANSACTION : ProgressTracker.Step("Recording transaction (InitiateFlow)") {
+        object SIGNING_TRANSACTION : ProgressTracker.Step("Signing transaction with our private key (InitiateFlow)") {
+            override fun childProgressTracker() = CollectSignaturesFlow.tracker()
+        }
+
+        object FINALISING_TRANSACTION : ProgressTracker.Step("Finalising transaction") {
             override fun childProgressTracker() = FinalityFlow.tracker()
         }
 
@@ -43,17 +46,15 @@ class InitiateFlow(val initiator: Party, val acceptor: Party, val instrument: St
         // We retrieve the notary identity from the network map.
         val notary = serviceHub.networkMapCache.notaryIdentities[0]
 
-        // We create a transaction builder.
-        val txBuilder = TransactionBuilder(notary = notary)
-
         // We create the transaction components.
         progressTracker.currentStep = GENERATING_TRANSACTION
         val outputState = ForwardState(initiator, acceptor, instrument, instrumentQuantity, deliveryPrice, settlementTimestamp, settlementType, position)
-        val outputContractAndState = StateAndContract(outputState, FORWARD_CONTRACT_ID)
-        val cmd = Command(ForwardContract.Commands.Create(), listOf(ourIdentity.owningKey, acceptor.owningKey))
+        val command = Command(ForwardContract.Commands.Create(), listOf(ourIdentity.owningKey, acceptor.owningKey))
 
-        // We add the items to the builder.
-        txBuilder.withItems(outputContractAndState, cmd)
+        // We create a transaction builder and add the components.
+        val txBuilder = TransactionBuilder(notary = notary)
+                .addOutputState(outputState, FORWARD_CONTRACT_ID)
+                .addCommand(command)
 
         // Verifying the transaction.
         txBuilder.verify(serviceHub)
@@ -63,22 +64,23 @@ class InitiateFlow(val initiator: Party, val acceptor: Party, val instrument: St
         val signedTx = serviceHub.signInitialTransaction(txBuilder)
 
         // Creating a session with the other party.
-        val otherpartySession = initiateFlow(acceptor)
+        val otherPartySession = initiateFlow(acceptor)
 
         // Obtaining the counterparty's signature.
-        val fullySignedTx = subFlow(CollectSignaturesFlow(signedTx, listOf(otherpartySession), CollectSignaturesFlow.tracker()))
+        val fullySignedTx = subFlow(CollectSignaturesFlow(signedTx, listOf(otherPartySession), CollectSignaturesFlow.tracker()))
 
         // Finalising the transaction.
         progressTracker.currentStep = FINALISING_TRANSACTION
-        return subFlow(FinalityFlow(fullySignedTx))
+        subFlow(FinalityFlow(fullySignedTx))
+        return fullySignedTx
     }
 }
 
 // Define InitiateFlowResponder:
 @InitiatedBy(InitiateFlow::class)
-class InitiateFlowResponder(val otherPartySession: FlowSession) : FlowLogic<SignedTransaction>() {
+class InitiateFlowResponder(val otherPartySession: FlowSession) : FlowLogic<Unit>() {
     @Suspendable
-    override fun call(): SignedTransaction {
+    override fun call() {
         val signTransactionFlow = object : SignTransactionFlow(otherPartySession, SignTransactionFlow.tracker()) {
             override fun checkTransaction(stx: SignedTransaction) = requireThat {
                 val output = stx.tx.outputs.single().data
@@ -86,6 +88,6 @@ class InitiateFlowResponder(val otherPartySession: FlowSession) : FlowLogic<Sign
             }
         }
 
-        return subFlow(signTransactionFlow)
+        subFlow(signTransactionFlow)
     }
 }

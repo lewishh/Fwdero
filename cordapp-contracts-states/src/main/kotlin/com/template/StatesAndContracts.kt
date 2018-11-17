@@ -21,31 +21,33 @@ class ForwardContract : Contract {
 
         when (command.value) {
             is Commands.Create -> {
-                val out = tx.outputs.single().data as ForwardState
+                val output = tx.outputs.single().data as ForwardState
                 val timestamp = Instant.now()
 
                 requireThat {
-                    "The initiator and the acceptor cannot be the same entity." using (out.initiator != out.acceptor)
-                    "deliveryPrice must be non-negative" using (out.deliveryPrice.compareTo(BigDecimal.ZERO) > 0)
-//                    "Settlement date not in the past" using (timestamp < out.settlementTimestamp)
-                    "Don't reissue existing / no inputs consumed" using tx.inputs.isEmpty()
-                    "Initiator, acceptor and Notary must sign." using (command.signers.toSet().size == 3)
-                    "The initiator and acceptor must be signers." using (command.signers.containsAll(listOf(
-                            out.acceptor.owningKey, out.initiator.owningKey)))
-                    "There should be one output state of type ForwardState." using (tx.outputs.size == 1)
+                    "The initiator and the acceptor cannot be the same entity" using (output.initiator != output.acceptor)
+                    "deliveryPrice must be non-negative" using (output.deliveryPrice.compareTo(BigDecimal.ZERO) > 0)
+                    "Don't reissue existing / no inputs consumed" using tx.inputs.isEmpty() // working
+                    "Initiator and acceptor" using (command.signers.toSet().size == 2)
+                    "The initiator and acceptor must be signers" using (command.signers.containsAll(listOf(
+                            output.initiator.owningKey, output.acceptor.owningKey)))
+                    "There should be one output state of type ForwardState" using (tx.outputs.size == 1)
                 }
             }
 
             is Commands.SettlePhysical -> {
-                val out = tx.outputs.single().data as ForwardState
+                val inputs = tx.inputsOfType<ForwardState>()
+                val input = inputs.single()
                 val timestamp = Instant.now()
 
                 requireThat {
-                    "Must have matured" using (timestamp >= out.settlementTimestamp)
-                    "There should be one output state of type ForwardState." using (tx.outputs.size == 1)
-//                    "The initiator and acceptor must be signers." using (command.signers.containsAll(listOf(
-//                            out.acceptor.owningKey, out.initiator.owningKey)))
-//                    "Must destroy the contract after" using tx.outputs.isEmpty()
+                    "Must have matured" using (timestamp >= input.settlementTimestamp)
+                    "An ForwardState input is consumed" using (tx.inputsOfType<ForwardState>().size == 1)
+                    "No other inputs are consumed" using (tx.inputs.size == 1)
+                    "The initiator must be signer." using (command.signers.contains(input.initiator.owningKey))
+//                    "Destroy contract on completion" using (tx.outputs.isEmpty())
+                    "An ForwardState output is created" using (tx.outputsOfType<ForwardState>().size == 1)
+                    "No other states are created" using (tx.outputs.size == 1)
                 }
             }
 
@@ -79,7 +81,7 @@ class ForwardContract : Contract {
 data class ForwardState(val initiator: Party, val acceptor: Party, val instrument: String, val instrumentQuantity: BigDecimal, val deliveryPrice: BigDecimal,
                         val settlementTimestamp: Instant, val settlementType: String, val position: String) : SchedulableState {
 
-    override val participants get() = listOf(initiator, acceptor)
+    override val participants get() = listOf(initiator, acceptor) // creation/consumption of this state
 
     // Defines the scheduled activity to be conducted by the SchedulableState.
     override fun nextScheduledActivity(thisStateRef: StateRef, flowLogicRefFactory: FlowLogicRefFactory): ScheduledActivity? {
