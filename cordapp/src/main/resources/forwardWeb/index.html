@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Example CorDapp</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"
+          integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css"
+          integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
+    <link rel="stylesheet" type="text/css" href="css/index.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"
+            integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa"
+            crossorigin="anonymous"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.7.5/angular.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-bootstrap/2.5.0/ui-bootstrap-tpls.min.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/createForwardModal.js"></script>
+    <script src="js/issueCashModal.js"></script>
+    <script src="js/settleModal.js"></script>
+</head>
+
+<body ng-app="demoAppModule" ng-controller="DemoAppCtrl as demoApp">
+<nav class="navbar navbar-default">
+    <div class="container-fluid">
+        <div class="navbar-header">
+            <a class="navbar-brand" href="#">{{demoApp.thisNode}}</a>
+        </div>
+        <button ng-click="demoApp.openCreateForwardModal()" type="button" class="btn btn-primary navbar-btn">Create Forward</button>
+        <button ng-click="demoApp.openIssueCashModal()" type="button" class="btn btn-primary navbar-btn">Issue cash</button>
+        <button ng-click="demoApp.refresh()" type="button" class="btn btn-default navbar-btn"><span
+                class="glyphicon glyphicon-refresh"></span></button>
+    </div>
+</nav>
+
+<script type="text/ng-template" id="createForwardModal.html">
+    <div class="modal-header">
+        <h4 class="modal-title">Add new Forward</h4>
+    </div>
+    <form>
+        <div class="modal-body">
+            <!-- Acceptor -->
+            <div class="form-group">
+                <label for="createForwardAcceptor" class="control-label">Acceptor:</label>
+                <select ng-model="createForwardModal.form.acceptor" class="form-control" id="createForwardAcceptor"
+                        ng-options="peer as peer for peer in createForwardModal.peers">
+                </select>
+            </div>
+            <!-- Instrument -->
+            <div class="form-group">
+                <label for="createForwardInstrument" class="control-label">Instrument:</label>
+                <input type="text" ng-model="createForwardModal.form.instrument" class="form-control" id="createForwardInstrument">
+            </div>
+            <!-- Instrument Quantity -->
+            <div class="form-group">
+                <label for="createForwardQuantity" class="control-label">Instrument Quantity (Int):</label>
+                <input type="number" ng-model="createForwardModal.form.quantity" class="form-control" id="createForwardQuantity">
+            </div>
+            <!-- Amount -->
+            <div class="form-group">
+                <label for="createForwardAmount" class="control-label">Amount (Int):</label>
+                <input type="number" ng-model="createForwardModal.form.amount" class="form-control" id="createForwardAmount">
+            </div>
+            <!-- Settlement Timestamp -->
+            <div class="form-group">
+                <label for="createForwardSettlementTimestamp" class="control-label">Settlement Timestamp (Instant):</label>
+                <input type="text" ng-model="createForwardModal.form.settlementTimestamp" class="form-control" id="createForwardSettlementTimestamp">
+            </div>
+            <!-- Settlement Type -->
+            <div class="form-group">
+                <label for="createForwardSettlementType" class="control-label">Settlement Type:</label>
+                <input type="text" ng-model="createForwardModal.form.settlementType" class="form-control" id="createForwardSettlementType">
+            </div>
+            <div ng-show="createForwardModal.formError" class="form-group">
+                <div class="alert alert-danger" role="alert">
+                    <span class="glyphicon glyphicon-exclamation-sign" aria-hidden="true"></span>
+                    <span class="sr-only">Error:</span>
+                    Enter valid Forward creation parameters
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button ng-click="createForwardModal.cancel()" type="button" class="btn btn-default">Close</button>
+            <button ng-click="createForwardModal.create()" type="button" class="btn btn-primary">Create Forward</button>
+        </div>
+    </form>
+</script>
+
+<script type="text/ng-template" id="createForwardMsgModal.html">
+    <div class="modal-body" id="create-forward-modal-body">
+        {{ createForwardMsgModal.message }}
+    </div>
+</script>
+
+<script type="text/ng-template" id="issueCashModal.html">
+    <div class="modal-header">
+        <h4 class="modal-title">Self-issue cash</h4>
+    </div>
+    <form>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="issueCashCurrency" class="control-label">Currency (USD):</label>
+                <input type="text" ng-model="issueCashModal.form.currency" class="form-control" id="issueCashCurrency">
+            </div>
+            <div class="form-group">
+                <label for="issueCashAmount" class="control-label">Amount (Int):</label>
+                <input type="text" ng-model="issueCashModal.form.amount" class="form-control" id="issueCashAmount">
+            </div>
+            <div ng-show="issueCashModal.formError" class="form-group">
+                <div class="alert alert-danger" role="alert">
+                    <span class="glyphicon glyphicon-exclamation-sign" aria-hidden="true"></span>
+                    <span class="sr-only">Error:</span>
+                    Enter valid cash issuance parameters.
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button ng-click="issueCashModal.cancel()" type="button" class="btn btn-default">Close</button>
+            <button ng-click="issueCashModal.issue()" type="button" class="btn btn-primary">Issue cash</button>
+        </div>
+    </form>
+</script>
+
+<script type="text/ng-template" id="issueCashMsgModal.html">
+    <div class="modal-body" id="issue-cash-modal-body">
+        {{ issueCashMsgModal.message }}
+    </div>
+</script>
+
+<script type="text/ng-template" id="settleModal.html">
+    <div class="modal-header">
+        <h4 class="modal-title">Settle Forward</h4>
+    </div>
+    <form>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="settleCurrency" class="control-label">Currency (USD):</label>
+                <input type="text" ng-model="settleModal.form.currency" class="form-control" id="settleCurrency">
+            </div>
+            <div class="form-group">
+                <label for="settleAmount" class="control-label">Amount (Int):</label>
+                <input type="text" ng-model="settleModal.form.amount" class="form-control" id="settleAmount">
+            </div>
+            <div ng-show="settleModal.formError" class="form-group">
+                <div class="alert alert-danger" role="alert">
+                    <span class="glyphicon glyphicon-exclamation-sign" aria-hidden="true"></span>
+                    <span class="sr-only">Error:</span>
+                    Enter valid Forward settle parameters.
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button ng-click="settleModal.cancel()" type="button" class="btn btn-default">Close</button>
+            <button ng-click="settleModal.settle()" type="button" class="btn btn-primary">Settle</button>
+        </div>
+    </form>
+</script>
+
+<script type="text/ng-template" id="settleMsgModal.html">
+    <div class="modal-body" id="settle-modal-body">
+        {{ settleMsgModal.message }}
+    </div>
+</script>
+
+<div class="row">
+    <div class="col-md-1"></div>
+    <div class="col-md-10">
+        <div class="panel panel-primary">
+            <div class="panel-heading">
+                <h3 class="panel-title">Cash balances:</h3>
+            </div>
+            <div class="panel-body">
+                <table class="table">
+                    <thead>
+                    <tr>
+                        <th>Amount</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr ng-repeat="cash in demoApp.cashBalances">
+                        <td class="vert-align">{{cash}}</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="col-md-1"></div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-1"></div>
+    <div class="col-md-10">
+        <div ng-show="!demoApp.forwards.length" class="panel panel-primary">
+            <div class="panel-heading">
+                <h3 class="panel-title">There are no recorded Forwards</h3>
+            </div>
+            <div class="panel-body">Use the "Create Forward" button to send an Forward to a peer.</div>
+        </div>
+        <div ng-show="demoApp.forwards.length" class="panel panel-primary">
+            <div class="panel-heading">
+                <h3 class="panel-title">Recorded Forwards:</h3>
+            </div>
+            <div class="panel-body">
+                <table class="table">
+                    <thead>
+                    <tr>
+                        <th>Acceptor</th>
+                        <th>Instrument</th>
+                        <th>Quantity</th>
+                        <th>Amount</th>
+                        <th>Timestamp</th>
+                        <th>Settle?</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr ng-repeat="forward in demoApp.forwards">
+                        <td class="vert-align">{{forward.acceptor}}</td>
+                        <td class="vert-align">{{forward.instrument}}</td>
+                        <td class="vert-align">{{forward.quantity}}</td>
+                        <td class="vert-align">{{forward.amount}}</td>
+                        <td class="vert-align">{{forward.timestamp}}</td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <button ng-click="demoApp.openSettleModal(forward.linearId.id)" type="button" class="btn btn-primary">Settle
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="col-md-1"></div>
+    </div>
+</div>
+
+</body>
+</html>
