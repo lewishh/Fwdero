@@ -16,7 +16,7 @@ import net.corda.testing.node.User
  * 2. Wait for all the nodes to start.
  * 3. Note the debug ports for each node, which should be output to the console. The "Debug CorDapp" configuration runs
  *    with port 5007, which should be "PartyA". In any case, double-check the console output to be sure.
- * 4. Set your breakpoints in your CorDapp code.
+ * 4. SettleCashFlowResponder your breakpoints in your CorDapp code.
  * 5. Run the "Debug CorDapp" remote debug run configuration.
  */
 fun main(args: Array<String>) {

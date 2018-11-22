@@ -1,19 +1,14 @@
 import com.template.ForwardState
 import com.template.flows.IssueCashFlow
-import com.template.flows.SettleFlow
-import net.corda.core.contracts.Amount
-import net.corda.core.contracts.ContractState
-import net.corda.core.contracts.StateAndRef
-import net.corda.core.contracts.UniqueIdentifier
+import com.template.flows.SettlePhysicalFlow
+import net.corda.core.contracts.*
 import net.corda.core.identity.CordaX500Name
-import net.corda.core.identity.Party
 import net.corda.core.internal.x500Name
 import net.corda.core.messaging.CordaRPCOps
 import net.corda.core.messaging.startFlow
 import net.corda.core.messaging.startTrackedFlow
 import net.corda.core.messaging.vaultQueryBy
 import net.corda.core.node.NodeInfo
-import net.corda.core.utilities.getOrThrow
 import net.corda.core.utilities.loggerFor
 import net.corda.finance.contracts.asset.Cash
 import net.corda.finance.contracts.getCashBalances
@@ -21,10 +16,7 @@ import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x500.style.BCStyle
 import org.slf4j.Logger
 import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneOffset
 import java.util.Currency
-import javax.servlet.http.Part
 import javax.ws.rs.GET
 import javax.ws.rs.Path
 import javax.ws.rs.Produces
@@ -109,34 +101,35 @@ class ForwardApi(val rpcOps: CordaRPCOps) {
     /**
      * Initiates a flow to agree a Forward between two parties.
      * Example request:
+     * curl -X GET http://localhost:10007/web/forward/create?acceptor=O=PartyB,L=London,C=GB&instrument=Robusta Coffee&quantity=100&currency=USD&amount=10&timestamp=2018-11-20&type=physical
      */
     @GET
-    @Path("issue-forward")
-    fun issueForward(@QueryParam(value = "acceptor") acceptor: String,
-                     @QueryParam(value = "instrument") instrument: String,
-                     @QueryParam(value = "quantity") quantity: Int,
-                     @QueryParam(value = "currency") currency: String,
-                     @QueryParam(value = "amount") amount: Int,
-                     @QueryParam(value = "settlementTimestamp") settlementTimestamp: String, // this
-                     @QueryParam(value = "settlementType") settlementType: String): Response {
+    @Path("create")
+    fun createForward(@QueryParam(value = "acceptor") acceptor: String,
+                      @QueryParam(value = "instrument") instrument: String,
+                      @QueryParam(value = "quantity") quantity: Int,
+                      @QueryParam(value = "currency") currency: String,
+                      @QueryParam(value = "amount") amount: Int,
+                      @QueryParam(value = "timestamp") timestamp: String,
+                      @QueryParam(value = "type") type: String): Response {
 
         val me = rpcOps.nodeInfo().legalIdentities.first()
-        val lender = rpcOps.wellKnownPartyFromX500Name(CordaX500Name.parse(acceptor)) ?: throw IllegalArgumentException("Unknown party name.")
-        val amountDue = Amount(amount.toLong() * 100, Currency.getInstance(currency))
-        val expiryDate = LocalDate.parse(settlementTimestamp).atStartOfDay().toInstant(ZoneOffset.UTC)
-        // Create new State
+        val acceptorToParty = rpcOps.wellKnownPartyFromX500Name(CordaX500Name.parse(acceptor)) ?: throw IllegalArgumentException("Unknown accepting party.")
+        val amountDue = if(type == "physical") Amount(0, Currency.getInstance(currency)) else Amount(amount.toLong() * 100, Currency.getInstance(currency))
+        val expiryTimestamp = Instant.parse(timestamp)
+
         try {
             val state = ForwardState(
-                    initiator = me, acceptor = lender, instrument = instrument, instrumentQuantity = quantity, currency = currency,
-                    amount = amountDue, settlementTimestamp = expiryDate, settlementType = settlementType)
-            // Start the IssueFlow. We block and waits for the flow to return.
+                    initiator = me, acceptor = acceptorToParty, instrument = instrument, instrumentQuantity = quantity, currency = currency,
+                    amount = amountDue, settlementTimestamp = expiryTimestamp, settlementType = type)
+
             val result = rpcOps.startTrackedFlow(::CreateFlow, state).returnValue.get()
-            // Return the response.
+
             return Response
                     .status(Response.Status.CREATED)
                     .entity("Transaction id ${result.id} committed to ledger.\n${result.tx.outputs.single()}")
                     .build()
-            // For the purposes of this demo app, we do not differentiate by exception type.
+
         } catch (e: Exception) {
             return Response
                     .status(Response.Status.BAD_REQUEST)
@@ -147,10 +140,10 @@ class ForwardApi(val rpcOps: CordaRPCOps) {
 
 
     /**
-     * Settles an Forward. Requires cash in the right currency to be able to settle.
+     * Manually settles a Forward. Requires cash in the right currency and settlement must be due
      */
-    @GET
-    @Path("settle-forward")
+    /*@GET
+    @Path("settle")
     fun settleForward(@QueryParam(value = "id") id: String,
                       @QueryParam(value = "amount") amount: Int,
                       @QueryParam(value = "currency") currency: String): Response {
@@ -158,7 +151,7 @@ class ForwardApi(val rpcOps: CordaRPCOps) {
         val settleAmount = Amount(amount.toLong() * 100, Currency.getInstance(currency))
 
         try {
-            rpcOps.startFlow(::SettleFlow, linearId, settleAmount).returnValue.get()
+            rpcOps.startFlow(::SettlePhysicalFlow, linearId, settleAmount).returnValue.get()
             return Response.status(Response.Status.CREATED).entity("$amount $currency paid off on Forward id $id.").build()
 
         } catch (e: Exception) {
@@ -167,7 +160,7 @@ class ForwardApi(val rpcOps: CordaRPCOps) {
                     .entity(e.message)
                     .build()
         }
-    }
+    }*/
 
     /**
      * Helper end-point to issue some cash to ourselves.
