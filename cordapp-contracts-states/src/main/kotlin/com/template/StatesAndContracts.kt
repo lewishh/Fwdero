@@ -6,8 +6,10 @@ import net.corda.core.identity.Party
 import net.corda.core.transactions.LedgerTransaction
 import java.time.Instant
 import com.template.base.SpotPrice
+import net.corda.core.contracts.Requirements.using
 import net.corda.finance.contracts.asset.Cash
 import net.corda.finance.utils.sumCash
+import java.lang.IllegalArgumentException
 import java.math.BigDecimal
 import java.security.PublicKey
 import java.util.*
@@ -34,70 +36,56 @@ class ForwardContract : Contract {
     }
 
     override fun verify(tx: LedgerTransaction) {
-        val command = tx.commands.requireSingleCommand<ForwardContract.Commands>()
+        val command = tx.commands.requireSingleCommand<Commands>()
+        val setOfSigners = command.signers.toSet()
 
         when (command.value) {
-            is Commands.Create -> {
-                requireThat {
-                    "No inputs should be consumed when issuing the contract." using (tx.inputs.isEmpty())
-                    "Only one output state should be created." using (tx.outputs.size == 1)
-                    val forward = tx.outputStates.single() as ForwardState
-                    "The initiator and acceptor cannot have the same identity." using (forward.acceptor != forward.initiator)
-                    "Both initiator and acceptor together only may sign the transaction." using
-                            (command.signers.toSet() == forward.participants.map { it.owningKey }.toSet())
-                }
-            }
+            is Commands.Create -> verifyCreate(tx, setOfSigners)
+            is Commands.SettlePhysical -> verifySettlePhysical(tx, setOfSigners)
+            is Commands.SettleCash -> verifySettleCash(tx, setOfSigners)
 
-            is Commands.SettlePhysical -> {
-                requireThat {
-                    val timestamp = Instant.now()
-//                    val forward = tx.inputStates.single() as ForwardState
-                    val forwards = tx.groupStates<ForwardState, UniqueIdentifier> { it.linearId }.single()
-                    val inputForward = forwards.inputs.single()
+            else -> throw IllegalArgumentException("Unknown command")
 
-                    "Must have matured" using (timestamp >= inputForward.settlementTimestamp)
-
-                    "There must be one input." using (forwards.inputs.size == 1)
-
-//                    val cash = tx.outputsOfType<Cash.State>()
-//                    "There must be output cash." using (cash.isNotEmpty())
-
-//                    val acceptableCash = cash.filter { it.owner == inputForward.initiator }
-//                    "There must be output cash paid to the recipient." using (acceptableCash.isNotEmpty())
-
-                    "There must be no output Forward as it has been fully settled." using (forwards.outputs.isEmpty())
-
-                    "Both initiator and acceptor must sign during settlement." using
-                            (command.signers.toSet() == inputForward.participants.map { it.owningKey }.toSet())
-                }
-            }
-
-            is Commands.SettleCash -> {
-                requireThat {
-                    val timestamp = Instant.now()
-                    val forward = tx.inputStates.single() as ForwardState
-                    val forwards = tx.groupStates<ForwardState, UniqueIdentifier> { it.linearId }.single()
-                    val inputForward = forwards.inputs.single()
-
-                    "Must have matured" using (timestamp >= inputForward.settlementTimestamp)
-
-                    "There must be one input." using (forwards.inputs.size == 1)
-
-//                    val cash = tx.outputsOfType<Cash.State>()
-//                    "There must be output cash." using (cash.isNotEmpty())
-
-//                    val acceptableCash = cash.filter { it.owner == inputForward.initiator }
-//                    "There must be output cash paid to the recipient." using (acceptableCash.isNotEmpty())
-
-                    "There must be no output Forward as it has been fully settled." using (forwards.outputs.isEmpty())
-
-                    "Both initiator and acceptor must sign during settlement." using
-                                (command.signers.toSet() == forward.participants.map { it.owningKey }.toSet())
-                }
-            }
-
-            else -> throw IllegalArgumentException("Command doesn't exist")
         }
+    }
+
+    private fun verifyCreate(tx: LedgerTransaction, signers: Set<PublicKey>) = requireThat {
+        "No inputs should be consumed when issuing the contract." using (tx.inputStates.isEmpty())
+        "Only one output state should be created." using (tx.outputStates.size == 1)
+        val output = tx.outputStates.single() as ForwardState // checked single
+        "The initiator and acceptor cannot have the same identity." using (output.acceptor != output.initiator)
+        "Both initiator and acceptor must sign the transaction." using (signers == keysFromParticipants(output))
+    }
+
+    private fun verifySettlePhysical(tx: LedgerTransaction, signers: Set<PublicKey>) = requireThat {
+        val forwardInputs = tx.inputStates.first() as ForwardState // Second is cash issue
+        val cashInput = tx.inputsOfType<Cash.State>()
+        val forward = tx.outputsOfType<ForwardState>()
+        val timestamp = Instant.now()
+
+        // Handle empty and non-empty wallet for input states
+        if (cashInput.isEmpty()) {
+            "Previous states are consumed" using (tx.inputStates.size == 1)
+        } else {
+            "Previous states are consumed" using (tx.inputStates.size == 2) // second state is cash issuer
+        }
+
+        "There must not be a ForwardState output" using (forward.isEmpty())
+        "Must have matured" using (timestamp >= forwardInputs.settlementTimestamp)
+        "Both initiator and acceptor must sign the transaction." using (signers == keysFromParticipants(forwardInputs))
+    }
+
+    private fun verifySettleCash(tx: LedgerTransaction, signers: Set<PublicKey>) = requireThat {
+        val forwardInputs = tx.inputStates.first() as ForwardState // Second is cash issue
+        val cash = tx.outputsOfType<Cash.State>()
+        val forward = tx.outputsOfType<ForwardState>()
+        val timestamp = Instant.now()
+
+        "Previous states are consumed" using (tx.inputStates.size == 2) // second is cash issue
+        "There must not be a ForwardState output" using (forward.isEmpty())
+        "Must have matured" using (timestamp >= forwardInputs.settlementTimestamp)
+        "There must be output cash." using (cash.isNotEmpty())
+        "Both initiator and acceptor must sign the transaction." using (signers == keysFromParticipants(forwardInputs))
     }
 
     class OracleCommand(val spotPrice: SpotPrice) : CommandData
@@ -116,7 +104,7 @@ data class ForwardState(val initiator: Party, val acceptor: Party, val instrumen
         if (settlementType == "cash") {
             return ScheduledActivity(flowLogicRefFactory.create("com.template.flows.SettleCashFlow", thisStateRef, linearId, this, amount), settlementTimestamp)
         } else if (settlementType == "physical") {
-            return ScheduledActivity(flowLogicRefFactory.create("com.template.flows.SettlePhysicalFlow", thisStateRef, linearId, Amount(1, Currency.getInstance(currency))), settlementTimestamp)
+            return ScheduledActivity(flowLogicRefFactory.create("com.template.flows.SettlePhysicalFlow", thisStateRef, linearId), settlementTimestamp)
         }
 
         return null
@@ -128,16 +116,15 @@ data class ForwardState(val initiator: Party, val acceptor: Party, val instrumen
          * @param forwardState ForwardState
          * @param oracleResults SpotPrice
          * @param currency String
-         * @return Amount<Currency>
-         * @return String
+         * @return Pair(Amount<Currency>, Party?
          */
         fun calculateCash(forwardState: ForwardState, oracleResults: SpotPrice, currency: String): Pair<Amount<Currency>, Party?> {
-            if (forwardState.amount.toDecimal() < oracleResults.value) {
+            if (forwardState.amount.toDecimal() < oracleResults.value) { // Seller owes buyer
                 val difference = (oracleResults.value - forwardState.amount.toDecimal()) * BigDecimal(forwardState.instrumentQuantity)
-                return Pair(Amount(difference.toLong(), Currency.getInstance(currency)), forwardState.initiator)
-            } else if (forwardState.amount.toDecimal() > oracleResults.value) {
+                return Pair(Amount.fromDecimal(difference, Currency.getInstance(currency)), forwardState.initiator)
+            } else if (forwardState.amount.toDecimal() > oracleResults.value) { // Buyer owes seller
                 val difference = (forwardState.amount.toDecimal() - oracleResults.value) * BigDecimal(forwardState.instrumentQuantity)
-                return Pair(Amount(difference.toLong(), Currency.getInstance(currency)), forwardState.acceptor)
+                return Pair(Amount.fromDecimal(difference, Currency.getInstance(currency)), forwardState.acceptor)
             }
 
             return Pair(Amount(0, Currency.getInstance(currency)), null)

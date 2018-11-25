@@ -30,7 +30,7 @@ import java.util.*
  *
  * @return FlowLogic<SignedTransaction>
  */
-class SettlePhysicalFlow(private val thisStateRef: StateRef, private val linearId: UniqueIdentifier, private var amount: Amount<Currency>): FlowLogic<SignedTransaction>() {
+class SettlePhysicalFlow(private val thisStateRef: StateRef, private val linearId: UniqueIdentifier): FlowLogic<SignedTransaction>() {
     @Suspendable
     override fun call(): SignedTransaction {
         val queryCriteria = QueryCriteria.LinearStateQueryCriteria(linearId = listOf(linearId))
@@ -44,16 +44,13 @@ class SettlePhysicalFlow(private val thisStateRef: StateRef, private val linearI
         builder.addInputState(forwardToSettle)
                 .addCommand(settleCommand)
 
-        val (_, cashKeys) = Cash.generateSpend(serviceHub, builder, amount, ourIdentityAndCert, counterparty)
-
         builder.verify(serviceHub)
 
-        val myKeysToSign = (cashKeys.toSet() + ourIdentity.owningKey).toList()
-        val ptx = serviceHub.signInitialTransaction(builder, myKeysToSign)
+        val ptx = serviceHub.signInitialTransaction(builder, ourIdentity.owningKey)
 
         val counterpartySession = initiateFlow(counterparty)
 
-        val stx = subFlow(CollectSignaturesFlow(ptx, listOf(counterpartySession), myOptionalKeys = myKeysToSign))
+        val stx = subFlow(CollectSignaturesFlow(ptx, listOf(counterpartySession)))
 
         return subFlow(FinalityFlow(stx))
     }

@@ -58,13 +58,13 @@ class SettleCashFlow(private val thisStateRef: StateRef, private val linearId: U
         val oracle = serviceHub.firstIdentityByName(ORACLE_NAME)
         val notary = forwardToSettle.state.notary
 
-
         val spotPrice = subFlow(OracleQuery(oracle, forwardState.instrument))
         val oracleCommand = Command(ForwardContract.OracleCommand(spotPrice), oracle.owningKey)
         val (requiredPayment, payee) = ForwardState.calculateCash(forwardState, spotPrice, forwardState.currency)
 
         val settleCommand = Command(ForwardContract.Commands.SettleCash(), listOf(counterparty.owningKey, ourIdentity.owningKey))
         val builder = TransactionBuilder(notary)
+                .addInputState(forwardToSettle)
                 .addCommand(oracleCommand)
                 .addCommand(settleCommand)
 
@@ -74,7 +74,10 @@ class SettleCashFlow(private val thisStateRef: StateRef, private val linearId: U
 
         if (payee == forwardState.initiator) {
             // Party A owes Party B
-            val (_, cashKeys) = Cash.generateSpend(serviceHub, builder, amount, ourIdentityAndCert, counterparty)
+//            if (serviceHub.getCashBalance(amount.token) > requiredPayment) {
+//                throw IllegalArgumentException("In amount: $requiredPayment")
+//            }
+            val (_, cashKeys) = Cash.generateSpend(serviceHub, builder, requiredPayment, ourIdentityAndCert, counterparty)
 
             // Step 8. Verify and sign the transaction.
             builder.verify(serviceHub)
@@ -101,10 +104,13 @@ class SettleCashFlow(private val thisStateRef: StateRef, private val linearId: U
             // Step 10. Finalize the transaction.
             return subFlow(FinalityFlow(stx))
         } else if (payee == forwardState.acceptor) {
+//            if (serviceHub.getCashBalance(amount.token) > requiredPayment) {
+//                throw IllegalArgumentException("$requiredPayment")
+//            }
             val partyBCert = getPartyBCert()
 
-            // Party B owes Party B
-            val (_, cashKeys) = Cash.generateSpend(serviceHub, builder, amount, partyBCert, forwardState.initiator)
+            // Party B owes Party A
+            val (_, cashKeys) = Cash.generateSpend(serviceHub, builder, requiredPayment, partyBCert, forwardState.initiator)
 
             // Step 8. Verify and sign the transaction.
             builder.verify(serviceHub)
