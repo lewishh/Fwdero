@@ -85,6 +85,10 @@ And the static web content is served from:
 
      /web/forward/
      
+## Known Issues
+Generating cash during cash settlement originating from the counterparty node. 
+Required signers sometimes throw errors but the transaction is otherwise successful and cash payments are made.
+
 ## Acknowledgements
 
 Thanks to Joel (co-maintainer of Corda) and the Corda team for answering questions and providing sample CorDapps for basic functionality.
