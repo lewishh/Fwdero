@@ -1,13 +1,4 @@
-![Corda](https://www.corda.net/wp-content/uploads/2016/11/fg005_corda_b.png)
-
-# CorDapp Template
-
-Welcome to the CorDapp template. The CorDapp template is a stubbed-out CorDapp 
-which you can use to bootstrap your own CorDapp projects.
-
-**This is the KOTLIN version of the CorDapp template. For the JAVA version click 
-[here](https://github.com/corda/cordapp-template-java/).**
-
+# Fwdero CorDapp
 ## Pre-Requisites
 
 You will need the following installed on your machine before you can start:
@@ -68,8 +59,7 @@ run the nodes with:
 
     runnodes.bat
 
-You should now have three Corda nodes running on your machine serving 
-the template.
+This produces a Party A, Party B, Oracle and Notary.
 
 When the nodes have booted up, you should see a message like the following 
 in the console: 
@@ -91,43 +81,8 @@ under `build/nodes/partyX`:
 As the nodes start up, they should tell you which host and port their
 embedded web server is running on. The API endpoints served are:
 
-     /api/template/templateGetEndpoint
+     /api/forward/
 
 And the static web content is served from:
 
-     /web/template
-
-## Using the Example RPC Client
-
-The `ExampleClient.kt` file is a simple utility which uses the client
-RPC library to connect to a node and log its transaction activity.
-It will log any existing states and listen for any future states. To build 
-the client use the following Gradle task:
-
-     ./gradlew runTemplateClient
-
-To run the client:
-
-**Via IntelliJ:**
-
-Select the 'Run Template RPC Client'
-run configuration which, by default, connect to PartyA (RPC port 10006). Click the
-Green Arrow to run the client.
-
-**Via the command line:**
-
-Run the following Gradle task:
-
-     ./gradlew runTemplateClient
-     
-Note that the template rPC client won't output anything to the console as no state 
-objects are contained in either PartyA's or PartyB's vault.
-
-## Running the Nodes Across Multiple Machines
-
-See https://docs.corda.net/tutorial-cordapp.html#running-nodes-across-machines.
-
-## Further reading
-
-Tutorials and developer docs for CorDapps and Corda are
-[here](https://docs.corda.net/).
+     /web/forward/
