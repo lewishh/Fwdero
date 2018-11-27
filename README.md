@@ -21,11 +21,9 @@ For IDE, compilation and JVM version issues, see the
 
 To get started, clone this repository with:
 
-     git clone https://github.com/corda/cordapp-template-kotlin.git
+     git clone https://github.com/lewishh/Fwdero.git
 
-And change directories to the newly cloned repo:
-
-     cd cordapp-template-kotlin
+The CorDapp is split into two modules with most functionality under the cordapp directory. The states and contracts are stored in the cordapp-contracts-state directory.
 
 ## Building the CorDapp template:
 
