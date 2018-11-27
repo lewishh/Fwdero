@@ -87,4 +87,4 @@ And the static web content is served from:
      
 ## Acknowledgements
 
-Thanks to Joel (co-maintainer of Corda) and the Corda team for answering and providing sample CorDapps for basic functionality.
+Thanks to Joel (co-maintainer of Corda) and the Corda team for answering questions and providing sample CorDapps for basic functionality.
