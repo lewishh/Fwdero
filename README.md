@@ -84,3 +84,7 @@ embedded web server is running on. The API endpoints served are:
 And the static web content is served from:
 
      /web/forward/
+     
+## Acknowledgements
+
+Thanks to Joel (co-maintainer of Corda) and the Corda team for answering and providing sample CorDapps for basic functionality.
